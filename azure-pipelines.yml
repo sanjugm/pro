@@ -77,9 +77,7 @@ stages:
             --dry-run=client \
             -o yaml | kubectl apply -f -
 
-          sed -i \
-            "s|q4telemetryacr2026.azurecr.io/req4-telemetry-to-bug:.*|q4telemetryacr2026.azurecr.io/req4-telemetry-to-bug:$(Build.BuildId)|" \
-            k8s/deployment.yaml
+          sed -i "s|image: .*|image: $(acrLoginServer)/$(imageName):$(Build.BuildId)|" k8s/deployment.yaml
 
           kubectl apply -f k8s/deployment.yaml
           kubectl apply -f k8s/service.yaml
