@@ -1,0 +1,85 @@
+trigger:
+- main
+
+variables:
+- group: Q4-Telemetry-Secrets
+
+variables:
+  acrLoginServer: 'q4telemetryacr2026.azurecr.io'
+  imageName: 'req4-telemetry-to-bug'
+  aksResourceGroup: 'q4-telemetry-rg'
+  aksClusterName: 'q4-aks'
+
+stages:
+
+- stage: BuildAndPush
+  displayName: Build and Push Image
+
+  jobs:
+  - job: Docker
+    displayName: Build Docker Image
+
+    pool:
+      vmImage: ubuntu-latest
+
+    steps:
+
+    - checkout: self
+
+    - task: AzureCLI@2
+      displayName: Build and Push to ACR
+      inputs:
+        azureSubscription: 'Azure subscription 1 (6a6b4ad6-1974-41d8-9238-3f53b521c556)'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az acr login --name q4telemetryacr2026
+
+          docker build \
+            -t $(acrLoginServer)/$(imageName):$(Build.BuildId) .
+
+          docker push \
+            $(acrLoginServer)/$(imageName):$(Build.BuildId)
+
+- stage: Deploy
+  displayName: Deploy to AKS
+
+  dependsOn: BuildAndPush
+
+  jobs:
+  - job: AKS
+    displayName: Deploy Application
+
+    pool:
+      vmImage: ubuntu-latest
+
+    steps:
+
+    - checkout: self
+
+    - task: AzureCLI@2
+      displayName: Create Secret and Deploy
+      inputs:
+        azureSubscription: 'sanju-app'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+
+          az aks get-credentials \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksClusterName) \
+            --overwrite-existing
+
+          kubectl create secret generic q4-appinsights \
+            --from-literal=connection-string="$(ApplicationInsightsConnectionString)" \
+            --dry-run=client \
+            -o yaml | kubectl apply -f -
+
+          sed -i \
+            "s|q4telemetryacr2026.azurecr.io/req4-telemetry-to-bug:.*|q4telemetryacr2026.azurecr.io/req4-telemetry-to-bug:$(Build.BuildId)|" \
+            k8s/deployment.yaml
+
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+
+          kubectl rollout status deployment/req4-api --timeout=180s
