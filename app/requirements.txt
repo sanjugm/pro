@@ -1,0 +1,7 @@
+flask==3.0.3
+gunicorn==22.0.0
+
+# You will need an Application Insights SDK to complete the TODO in app.py.
+# The current Azure-recommended distro is:
+#   azure-monitor-opentelemetry==1.6.1
+# Add it yourself once you have decided how to instrument.
