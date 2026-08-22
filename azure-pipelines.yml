@@ -3,12 +3,14 @@ trigger:
 
 variables:
 - group: Q4-Telemetry-Secrets
-
-variables:
-  acrLoginServer: 'q4telemetryacr2026.azurecr.io'
-  imageName: 'req4-telemetry-to-bug'
-  aksResourceGroup: 'q4-telemetry-rg'
-  aksClusterName: 'q4-aks'
+- name: acrLoginServer
+  value: q4telemetryacr2026.azurecr.io
+- name: imageName
+  value: req4-telemetry-to-bug
+- name: aksResourceGroup
+  value: q4-telemetry-rg
+- name: aksClusterName
+  value: q4-aks
 
 stages:
 
