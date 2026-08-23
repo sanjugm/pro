@@ -4,9 +4,8 @@ trigger:
 
 resources:
   webhooks:
-    - webhook: CriticalAlert
+    - webhook: WebHook
       connection: Q4-Critical-Alert-Webhook
-
 
 variables:
 - group: Q4-Telemetry-Secrets

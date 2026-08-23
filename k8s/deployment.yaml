@@ -20,7 +20,7 @@ spec:
       containers:
         - name: req4-api
 
-          image: YOUR_ACR_LOGIN_SERVER/req4-telemetry-to-bug:latest
+          image: q4telemetryacr2026.azurecr.io/req4-telemetry-to-bug:latest
 
           ports:
             - containerPort: 8080
