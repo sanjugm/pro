@@ -1,21 +1,36 @@
 trigger:
 - main
 
+
+resources:
+  webhooks:
+    - webhook: CriticalAlert
+      connection: Q4-Critical-Alert-Webhook
+
+
 variables:
 - group: Q4-Telemetry-Secrets
+
 - name: acrLoginServer
   value: q4telemetryacr2026.azurecr.io
+
 - name: imageName
   value: req4-telemetry-to-bug
+
 - name: aksResourceGroup
   value: q4-telemetry-rg
+
 - name: aksClusterName
   value: q4-aks
 
+
 stages:
+
 
 - stage: BuildAndPush
   displayName: Build and Push Image
+
+  condition: ne(variables['Build.Reason'], 'ResourceTrigger')
 
   jobs:
   - job: Docker
@@ -34,19 +49,34 @@ stages:
         azureSubscription: 'Azure subscription 1 (6a6b4ad6-1974-41d8-9238-3f53b521c556)'
         scriptType: bash
         scriptLocation: inlineScript
+
         inlineScript: |
-          az acr login --name q4telemetryacr2026
+
+          echo "Logging into ACR..."
+
+          az acr login \
+            --name q4telemetryacr2026
+
+          echo "Building Docker image..."
 
           docker build \
             -t $(acrLoginServer)/$(imageName):$(Build.BuildId) .
 
+          echo "Pushing Docker image..."
+
           docker push \
             $(acrLoginServer)/$(imageName):$(Build.BuildId)
+
+          echo "Image pushed successfully."
+
+
 
 - stage: Deploy
   displayName: Deploy to AKS
 
   dependsOn: BuildAndPush
+
+  condition: ne(variables['Build.Reason'], 'ResourceTrigger')
 
   jobs:
   - job: AKS
@@ -65,21 +95,87 @@ stages:
         azureSubscription: 'sanju-app'
         scriptType: bash
         scriptLocation: inlineScript
+
         inlineScript: |
+
+          echo "Getting AKS credentials..."
 
           az aks get-credentials \
             --resource-group $(aksResourceGroup) \
             --name $(aksClusterName) \
             --overwrite-existing
 
+          echo "Creating/updating Application Insights secret..."
+
           kubectl create secret generic q4-appinsights \
             --from-literal=connection-string="$(ApplicationInsightsConnectionString)" \
             --dry-run=client \
             -o yaml | kubectl apply -f -
 
-          sed -i "s|image: .*|image: $(acrLoginServer)/$(imageName):$(Build.BuildId)|" k8s/deployment.yaml
+          echo "Updating image tag..."
+
+          sed -i \
+            "s|image: .*|image: $(acrLoginServer)/$(imageName):$(Build.BuildId)|" \
+            k8s/deployment.yaml
+
+          echo "Applying Deployment..."
 
           kubectl apply -f k8s/deployment.yaml
+
+          echo "Applying Service..."
+
           kubectl apply -f k8s/service.yaml
 
-          kubectl rollout status deployment/req4-api --timeout=180s
+          echo "Waiting for rollout..."
+
+          kubectl rollout status \
+            deployment/req4-api \
+            --timeout=180s
+
+          echo "Deployment completed successfully."
+
+
+
+- stage: Automation
+  displayName: Process Critical Alert and Create ADO Bug
+
+  condition: eq(variables['Build.Reason'], 'ResourceTrigger')
+
+  jobs:
+  - job: ProcessAlert
+    displayName: Process Azure Monitor Alert
+
+    pool:
+      vmImage: ubuntu-latest
+
+    steps:
+
+    - checkout: self
+
+    - task: UsePythonVersion@0
+      displayName: Use Python 3
+      inputs:
+        versionSpec: '3.x'
+
+    - script: |
+        python -m pip install --upgrade pip
+        pip install requests
+      displayName: Install Python Dependencies
+
+    - script: |
+        echo "Running critical alert automation..."
+
+        python automation.py
+      displayName: Create ADO Bug from Alert
+
+      env:
+        # PAT comes from the ADO variable group.
+        # The variable group should be linked to Azure Key Vault.
+        ADO_PAT: $(ADOPAT)
+
+        # Azure DevOps organization/project
+        ADO_ORGANIZATION: sanjugm
+        ADO_PROJECT: Devops1
+
+        # Webhook payload
+        ALERT_PAYLOAD: $(resources.webhooks.CriticalAlert)
